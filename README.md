@@ -18,12 +18,12 @@ Model a wine estate as four related tables: **blocks** (the parcels, keyed by bl
 - **`pixeltable.toml` project config**: local and Pixeltable Cloud database sizing in one file
 - **FastAPI serving**: one `FastAPIRouter` turns tables and `@pxt.query` functions into typed REST routes (insert, update, delete, compute and query) with OpenAPI docs
 - **Incremental computed columns** powered by plain Python UDFs (`@pxt.udf`)
-- **Importable UDF module**: UDFs in `udfs.py`, tables in `models.py`, queries in `queries.py`, routes in `app.py` (Pixeltable resolves UDFs by module path)
+- **Importable UDF module**: UDFs live in `udfs.py`; tables, queries and routes live together in `app.py` (Pixeltable resolves UDFs by module path)
 - **`pixeltable.toml`** declares a local database and a **Pixeltable Cloud** database, so the same code deploys with `pxt db update`
 
 ## Evolving a multi-table schema
 
-The four tables live in `models.py` and are created together by `pxt schema update app.py estate`. The schema is meant to change:
+The four tables are classes in `app.py` and are created together by `pxt schema update app.py estate`. The schema is meant to change:
 
 - **Add a column**: `irrigation: pxt.String | None` on `Blocks` is nullable, so adding it to an existing catalog is an in-place, non-destructive `pxt schema update`. Existing rows get `None`, and you can backfill them with `Blocks.update(...)`.
 - **Change a query**: `open_blocks` filters on acreage *and* `organic`. Edit the body of a `@pxt.query` and `pxt schema check` / `pxt service update` notice the change. The service restarts with the new query, and nothing in the tables has to move.
@@ -37,13 +37,11 @@ The four tables live in `models.py` and are created together by `pxt schema upda
 
 | File | What it is |
 |------|------------|
-| `app.py` | The API: one `FastAPIRouter` wiring the tables and queries into REST routes |
+| `app.py` | The app: tables declared as Python classes, `@pxt.query` functions, and the `FastAPIRouter` routes |
 | `client_demo.py` | Plant, harvest and taste through the API, then query open blocks and harvest history |
-| `models.py` | Tables declared as Python classes: columns, computed columns, indexes |
 | `pixeltable.toml` | Project config: the local database plus a Pixeltable Cloud database (sizing, deploy excludes) |
-| `queries.py` | `@pxt.query` functions served as query routes |
 | `seed.py` | Seed three blocks, their vines, two harvests and a tasting |
-| `udfs.py` | Pixeltable UDFs (`@pxt.udf`) in their own importable module |
+| `udfs.py` | Pixeltable UDFs (`@pxt.udf`) in their own importable module, imported by `app.py` |
 | `requirements.txt` / `pyproject.toml` | Dependencies (`pixeltable[serve]>=0.7.14`) |
 
 **Tables**
@@ -120,10 +118,10 @@ def vine_age(planted_year: int) -> int:
     return max(0, SEASON - planted_year)
 ```
 
-**2. Tables are Python classes (`models.py`).** Annotated attributes are stored columns; attributes assigned an expression are **computed columns** (`id`, `tpa`, `band`, `ripe`), evaluated incrementally on every insert or update and recomputed when their inputs change.
+**2. Tables are Python classes (`app.py`).** Annotated attributes are stored columns; attributes assigned an expression are **computed columns** (`id`, `tpa`, `band`, `ripe`), evaluated incrementally on every insert or update and recomputed when their inputs change.
 
 ```python
-# models.py
+# app.py
 class Harvests(TableModel, name='harvests'):
     id = pxt.Column(value=pxtf.uuid.uuid7(), primary_key=True)
     block_id: pxt.String
@@ -137,10 +135,10 @@ class Harvests(TableModel, name='harvests'):
     ripe = ripeness(brix)
 ```
 
-**3. Queries are functions (`queries.py`).** `@pxt.query` wraps a Pixeltable query so it can be called from Python or exposed as a route:
+**3. Queries are functions (`app.py`).** `@pxt.query` wraps a Pixeltable query so it can be called from Python or exposed as a route:
 
 ```python
-# queries.py
+# app.py
 @pxt.query
 def open_blocks(min_acres: float):
     """Organic blocks of at least `min_acres`, largest first."""
